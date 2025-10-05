@@ -1,26 +1,9 @@
-// VentureOS_UI.kt
-// Interface do sistema com inspiração no Android — por Augusto (Refatorado por Gemini)
-// Requisitos: JDK 11+ e JavaFX
-//
-// Como compilar (exemplo com OpenJFX 17):
-//   kotlink -classpath /caminho/para/libs/javafx/* -include-runtime -d VentureOS.jar VentureOS_UI.kt
-//   java --module-path /caminho/para/libs/javafx --add-modules javafx.controls,javafx.fxml -jar VentureOS.jar
-//
-// Mudanças da Refatoração:
-// - UI totalmente redesenhada para se assemelhar a uma interface de tablet Android.
-// - Navegação de tela única: apps abrem como "camadas" na janela principal, não em novas janelas.
-// - Adicionada Barra de Navegação inferior (Voltar, Home, Recentes).
-// - Painel de Notificações e Configurações Rápidas que desliza do topo.
-// - Tema escuro (Material Design) com cores e sombras para uma aparência moderna.
-// - Remoção dos painéis laterais para um layout mais limpo e focado.
-// - Lógica de estado (AppState) e modelos de dados foram mantidos.
-
 package com.ventureos.ui
 
 import javafx.animation.TranslateTransition
 import javafx.application.Application
 import javafx.application.Platform
-import javafx.beans.property.*
+import javafx.beans.property.SimpleBooleanProperty
 import javafx.collections.FXCollections
 import javafx.collections.ObservableList
 import javafx.geometry.Insets
@@ -32,36 +15,30 @@ import javafx.scene.effect.DropShadow
 import javafx.scene.input.KeyCode
 import javafx.scene.layout.*
 import javafx.scene.paint.Color
-import javafx.scene.shape.Circle
-import javafx.scene.shape.Rectangle
 import javafx.scene.text.Font
 import javafx.scene.text.FontWeight
 import javafx.stage.Stage
 import javafx.util.Duration
-import java.io.File
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
-// ======= TEMA DE CORES (MATERIAL DESIGN) =======
 object Theme {
-    val BACKGROUND = Color.web("#121212") // Fundo escuro
-    val SURFACE = Color.web("#1E1E1E")    // Cor de "superfícies" como cards
-    val PRIMARY = Color.web("#BB86FC")    // Cor de destaque principal
-    val ON_SURFACE = Color.web("#FFFFFF")  // Cor do texto sobre superfícies
-    val ON_SURFACE_SECONDARY = Color.web("#A0A0A0") // Cor de texto secundário
+    val BACKGROUND = Color.web("#0D47A1")
+    val SURFACE = Color.web("#1E1E1E")
+    val SURFACE_ALT = Color.web("#333333")
+    val PRIMARY = Color.web("#2196F3")
+    val ON_SURFACE = Color.web("#FFFFFF")
+    val ON_SURFACE_SECONDARY = Color.web("#A0A0A0")
 }
 
-// ======= MODELS (Sem alterações) =======
 data class OsApp(
     val id: String,
     val name: String,
     val description: String,
     val iconUnicode: String = "📱",
-    val native: Boolean = true,
     var installed: Boolean = false
 )
 
@@ -69,73 +46,35 @@ data class NotificationItem(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val content: String,
-    val timestamp: LocalDateTime = LocalDateTime.now(),
     var read: Boolean = false
 )
 
-data class UpdateItem(
-    val id: String = UUID.randomUUID().toString(),
-    val title: String,
-    val details: String,
-    var installed: Boolean = false
-)
-
-// ======= ESTADO GLOBAL (Sem alterações na lógica) =======
 object AppState {
     val apps: ObservableList<OsApp> = FXCollections.observableArrayList()
     val notifications: ObservableList<NotificationItem> = FXCollections.observableArrayList()
-    val updates: ObservableList<UpdateItem> = FXCollections.observableArrayList()
     val coppaMode = SimpleBooleanProperty(false)
-    val yasaMode = SimpleBooleanProperty(false)
-    private val firstBootFlag = File(System.getProperty("user.home"), ".ventureos_firstboot_done")
-    fun isFirstBoot(): Boolean = !firstBootFlag.exists()
-    fun markFirstBootDone() { try { firstBootFlag.createNewFile() } catch (_: Throwable) {} }
     val scheduler = Executors.newSingleThreadScheduledExecutor()
     var clockTask: ScheduledFuture<*>? = null
 }
 
-// ======= UTILITÁRIOS (Sem alterações) =======
-fun nowTimeString(): String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-fun nowFullDateString(): String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
-fun generateDefaultUpdates(): List<UpdateItem> {
-    val names = listOf("NodeAtualizaJSON", "Segurança-Patch-092", "KernelBridge-Compat", "Atualiza-Seguranca-Critical")
-    return names.map { UpdateItem(title = it, details = "Descrição da atualização $it.") }
-}
+fun nowTimeString(): String = java.time.LocalDateTime.now()
+    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 
-// ======= COMPONENTES DE UI (Refatorados) =======
-
-// --- Barra de Status Superior (estilo Android) ---
 class TopStatusBar : HBox() {
     init {
-        style = "-fx-background-color: transparent;"
         padding = Insets(8.0, 16.0, 8.0, 16.0)
         spacing = 16.0
         alignment = Pos.CENTER_RIGHT
+        style = "-fx-background-color: ${Theme.SURFACE};"
 
         val clockLabel = Label(nowTimeString()).apply {
             font = Font.font("System", FontWeight.SEMI_BOLD, 16.0)
             textFill = Theme.ON_SURFACE
         }
 
-        val wifiLabel = Label("📶").apply { textFill = Theme.ON_SURFACE }
-        val batteryLabel = Label("🔋 84%").apply { textFill = Theme.ON_SURFACE }
-        
-        // Indicadores de modo
-        val coppaIndicator = Label().apply {
-            textFill = Theme.PRIMARY
-            style = "-fx-font-size: 11px; -fx-font-weight: bold;"
-            textProperty().bind(AppState.coppaMode.map { if (it) "COPPA" else "" })
-        }
-        val yasaIndicator = Label().apply {
-            textFill = Color.CYAN
-            style = "-fx-font-size: 11px; -fx-font-weight: bold;"
-            textProperty().bind(AppState.yasaMode.map { if (it) "YASA" else "" })
-        }
-
         val spacer = Region().apply { HBox.setHgrow(this, Priority.ALWAYS) }
-        children.addAll(spacer, coppaIndicator, yasaIndicator, wifiLabel, batteryLabel, clockLabel)
+        children.addAll(spacer, clockLabel)
 
-        // Atualiza o relógio
         AppState.clockTask?.cancel(true)
         AppState.clockTask = AppState.scheduler.scheduleAtFixedRate({
             Platform.runLater { clockLabel.text = nowTimeString() }
@@ -143,399 +82,193 @@ class TopStatusBar : HBox() {
     }
 }
 
-// --- Painel de Notificações e Atalhos (Desliza do Topo) ---
-class NotificationShade : VBox() {
-    private var isOpen = false
-
+class NotificationBar(private val appManager: AppUIManager) : HBox() {
     init {
-        // Layout e Estilo
-        padding = Insets(16.0)
-        spacing = 12.0
-        style = "-fx-background-color: #2A2A2A; -fx-background-radius: 0 0 20 20;"
-        effect = DropShadow(20.0, Color.BLACK)
-        
-        // Deixa o painel fora da tela por padrão
-        managedProperty().bind(visibleProperty())
-        isVisible = false
+        padding = Insets(8.0)
+        spacing = 20.0
+        alignment = Pos.CENTER
+        style = "-fx-background-color: ${Theme.SURFACE_ALT};"
 
-        // 1. Título e Botão de Limpar
-        val header = HBox().apply {
-            alignment = Pos.CENTER_LEFT
-            spacing = 10.0
-            val title = Label("Notificações").apply {
-                font = Font.font("System", FontWeight.BOLD, 20.0)
-                textFill = Theme.ON_SURFACE
-            }
-            val spacer = Region().apply { HBox.setHgrow(this, Priority.ALWAYS) }
-            val btnClear = Button("Limpar").apply {
-                setOnAction { AppState.notifications.clear() }
-            }
-            children.addAll(title, spacer, btnClear)
+        val volume = Label("🔊").apply { textFill = Theme.ON_SURFACE }
+        val settings = Button("⚙️").apply {
+            style = "-fx-background-color: transparent; -fx-font-size: 18;"
+            setOnAction { appManager.openSettings() }
+        }
+        val browser = Button("🌐").apply {
+            style = "-fx-background-color: transparent; -fx-font-size: 18;"
+            setOnAction { appManager.openBrowser() }
         }
 
-        // 2. Atalhos Rápidos (Quick Settings)
-        val quickSettingsGrid = FlowPane().apply {
-            hgap = 10.0
-            vgap = 10.0
-            alignment = Pos.CENTER_LEFT
-            children.addAll(
-                createQuickSettingToggle("Wi-Fi 📶", true),
-                createQuickSettingToggle("Bluetooth  bluetooth", false),
-                createQuickSettingToggle("Não Perturbe 🌙", false)
-            )
-        }
-        
-        // 3. Lista de Notificações
-        val notificationList = ListView<NotificationItem>().apply {
-            style = "-fx-background-color: transparent;"
-            setCellFactory { NotificationCell() }
-            items = AppState.notifications
-        }
-        
-        children.addAll(header, Separator(), quickSettingsGrid, Separator(), notificationList)
-    }
-
-    private fun createQuickSettingToggle(text: String, selected: Boolean) = ToggleButton(text).apply {
-        isSelected = selected
-        style = "-fx-background-radius: 15; -fx-pref-width: 120;"
-    }
-
-    fun toggle() {
-        val transition = TranslateTransition(Duration.millis(300.0), this)
-        if (isOpen) {
-            transition.toY = -this.height
-            transition.setOnFinished { isVisible = false }
-        } else {
-            isVisible = true
-            transition.fromY = -this.height
-            transition.toY = 0.0
-        }
-        transition.play()
-        isOpen = !isOpen
-    }
-
-    // Célula customizada para a lista de notificações
-    private class NotificationCell : ListCell<NotificationItem>() {
-        override fun updateItem(item: NotificationItem?, empty: Boolean) {
-            super.updateItem(item, empty)
-            if (empty || item == null) {
-                graphic = null
-            } else {
-                val title = Label(item.title).apply {
-                    font = Font.font("System", FontWeight.BOLD, 14.0)
-                    textFill = Theme.ON_SURFACE
-                }
-                val content = Label(item.content).apply {
-                    isWrapText = true
-                    textFill = Theme.ON_SURFACE_SECONDARY
-                }
-                val meta = Label(item.timestamp.format(DateTimeFormatter.ofPattern("HH:mm"))).apply {
-                    style = "-fx-font-size: 10px; -fx-text-fill: #888;"
-                }
-                val textVBox = VBox(4.0, title, content)
-                graphic = HBox(10.0, textVBox, meta).apply { padding = Insets(8.0) }
-            }
-        }
+        children.addAll(volume, settings, browser)
     }
 }
 
-// --- Ícone de App na Tela Inicial ---
 class AppTile(val app: OsApp, private val appManager: AppUIManager) : VBox() {
     init {
         prefWidth = 100.0
         prefHeight = 100.0
         alignment = Pos.CENTER
         spacing = 8.0
-        style = "-fx-background-color: transparent; -fx-background-radius: 16;"
+        style = "-fx-background-color: ${Theme.SURFACE_ALT}; -fx-background-radius: 16;"
 
         val icon = Label(app.iconUnicode).apply { font = Font.font(32.0) }
         val name = Label(app.name).apply {
             textFill = Theme.ON_SURFACE
             isWrapText = true
         }
-
         children.addAll(icon, name)
 
-        setOnMouseClicked {
-            appManager.openApp(app)
-        }
-        
-        // Efeito de hover
+        setOnMouseClicked { appManager.openApp(app) }
         setOnMouseEntered { style = "-fx-background-color: rgba(255,255,255,0.1); -fx-background-radius: 16;" }
-        setOnMouseExited { style = "-fx-background-color: transparent; -fx-background-radius: 16;" }
+        setOnMouseExited { style = "-fx-background-color: ${Theme.SURFACE_ALT}; -fx-background-radius: 16;" }
     }
 }
 
-
-// --- Barra de Navegação Inferior ---
-class NavigationBar(private val appManager: AppUIManager) : HBox() {
-    init {
-        padding = Insets(10.0)
-        spacing = 20.0
-        alignment = Pos.CENTER
-        style = "-fx-background-color: #252525;"
-
-        val backButton = createNavButton("◀") { appManager.back() }
-        val homeButton = createNavButton("●") { appManager.goHome() }
-        val recentsButton = createNavButton("■") { 
-            // Ação de "Recentes" pode ser implementada futuramente
-            AppState.notifications.add(0, NotificationItem("Sistema", "Visualização de apps recentes ainda não implementada."))
-        }
-
-        children.addAll(backButton, homeButton, recentsButton)
-    }
-
-    private fun createNavButton(icon: String, action: () -> Unit) = Button(icon).apply {
-        style = "-fx-font-size: 16; -fx-background-color: transparent; -fx-text-fill: white;"
-        setOnAction { action() }
-    }
-}
-
-
-// --- Gerenciador da Interface dos Apps (Controla o que é exibido) ---
 class AppUIManager(private val mainStack: StackPane) {
-    private val appViewCache = mutableMapOf<String, Node>()
-    private val viewStack = Stack<Node>() // Pilha para o botão "Voltar"
+    private val viewStack = Stack<Node>()
 
     fun openApp(app: OsApp) {
-        val appView = appViewCache.getOrPut(app.id) {
-            val content = when (app.id) {
-                "settings-app" -> createSettingsAppContent()
-                "store-app" -> createStoreAppContent()
-                else -> createGenericAppContent(app)
-            }
-            // Adiciona um cabeçalho simples ao app
-            BorderPane().apply {
-                style = "-fx-background-color: ${Theme.BACKGROUND.toString().replace("0x", "#")};"
-                top = HBox(Label(app.name)).apply {
-                    padding = Insets(16.0)
-                    style = "-fx-background-color: ${Theme.SURFACE.toString().replace("0x", "#")};"
-                    (children.first() as Label).apply {
-                        font = Font.font("System", FontWeight.BOLD, 18.0)
-                        textFill = Theme.ON_SURFACE
-                    }
-                }
-                center = content
-            }
+        val content = VBox(12.0).apply {
+            padding = Insets(16.0)
+            children.add(Label("App: ${app.name}").apply {
+                font = Font.font(18.0); textFill = Theme.ON_SURFACE
+            })
         }
-        
-        // Esconde a tela inicial e mostra o app
-        mainStack.children.first().isVisible = false
-        if (viewStack.isNotEmpty()) viewStack.peek().isVisible = false
+        showView(content)
+    }
 
-        if (!mainStack.children.contains(appView)) {
-            mainStack.children.add(appView)
+    fun openSettings() {
+        val settingsView = VBox(12.0).apply {
+            padding = Insets(16.0)
+            style = "-fx-background-color: ${Theme.SURFACE};"
+            children.add(Label("Configurações do Sistema").apply { 
+                font = Font.font(18.0); textFill = Theme.PRIMARY 
+            })
+            children.add(Label("Bateria: 84%").apply { textFill = Theme.PRIMARY })
+            children.add(Label("Apps Favoritos").apply { textFill = Theme.PRIMARY })
+            val browserBtn = Button("Abrir Navegador").apply { 
+                setOnAction { openBrowser() } 
+            }
+            children.add(browserBtn)
         }
-        appView.isVisible = true
-        viewStack.push(appView)
+        showView(settingsView)
+    }
+
+    fun openBrowser() {
+        val browserView = VBox(12.0).apply {
+            padding = Insets(16.0)
+            children.add(Label("Navegador Web (Firefox via S-Droid)").apply {
+                font = Font.font(18.0); textFill = Theme.ON_SURFACE
+            })
+        }
+        showView(browserView)
+    }
+
+    private fun showView(node: Node) {
+        if (viewStack.isNotEmpty()) viewStack.peek().isVisible = false
+        if (!mainStack.children.contains(node)) mainStack.children.add(node)
+        node.isVisible = true
+        viewStack.push(node)
     }
 
     fun goHome() {
         viewStack.forEach { it.isVisible = false }
         viewStack.clear()
-        mainStack.children.first().isVisible = true // Mostra a tela inicial
+        mainStack.children.first().isVisible = true
     }
 
     fun back() {
         if (viewStack.isNotEmpty()) {
-            val currentView = viewStack.pop()
-            currentView.isVisible = false
-            
-            if(viewStack.isNotEmpty()) {
-                viewStack.peek().isVisible = true
-            } else {
-                goHome() // Se não houver mais nada na pilha, volta para home
-            }
+            val current = viewStack.pop()
+            current.isVisible = false
+            if (viewStack.isNotEmpty()) viewStack.peek().isVisible = true
+            else goHome()
         }
-    }
-
-    // --- Conteúdos dos Apps ---
-    private fun createGenericAppContent(app: OsApp) = VBox(12.0).apply {
-        padding = Insets(16.0)
-        children.addAll(
-            Label("App: ${app.name}").apply { font = Font.font(18.0); textFill = Theme.ON_SURFACE },
-            Label(app.description).apply { isWrapText = true; textFill = Theme.ON_SURFACE_SECONDARY }
-        )
-    }
-
-    private fun createSettingsAppContent() = VBox(12.0).apply {
-        padding = Insets(16.0)
-        children.add(Label("Configurações do Sistema").apply { font = Font.font(18.0); textFill = Theme.ON_SURFACE })
-        
-        val coppaToggle = CheckBox("Modo COPPA (proteção infantil)").apply {
-            isSelected = AppState.coppaMode.get()
-            textFill = Theme.ON_SURFACE
-            selectedProperty().bindBidirectional(AppState.coppaMode)
-        }
-        val yasaToggle = CheckBox("Modo YASA (recursos avançados)").apply {
-            isSelected = AppState.yasaMode.get()
-            textFill = Theme.ON_SURFACE
-            selectedProperty().bindBidirectional(AppState.yasaMode)
-        }
-        
-        val updatesList = ListView<String>().apply {
-            prefHeight = 200.0
-            items.setAll(AppState.updates.map { it.title })
-            AppState.updates.addListener { _, _, _ -> items.setAll(AppState.updates.map { it.title }) }
-        }
-        val btnApply = Button("Aplicar Atualizações").apply {
-            setOnAction {
-                AppState.updates.forEach { it.installed = true }
-                AppState.notifications.add(0, NotificationItem("Atualizações", "Todas atualizações instaladas"))
-            }
-        }
-        children.addAll(coppaToggle, yasaToggle, Separator(), Label("Atualizações Disponíveis").apply { textFill = Theme.ON_SURFACE }, updatesList, btnApply)
-    }
-    
-    private fun createStoreAppContent() = VBox(10.0).apply {
-        padding = Insets(16.0)
-        val storeItems = listOf("Firefox", "Clock Widget", "WeatherPro", "GamesPack", "MusicX")
-        val storeList = ListView<String>().apply { items.addAll(storeItems) }
-        
-        val btnInstall = Button("Instalar Selecionado").apply {
-            setOnAction {
-                val selected = storeList.selectionModel.selectedItem ?: return@setOnAction
-                if (AppState.coppaMode.get()) {
-                    AppState.notifications.add(0, NotificationItem("Loja", "Instalação bloqueada por COPPA"))
-                    return@setOnAction
-                }
-                val id = selected.lowercase().replace(" ", "-")
-                if (AppState.apps.none { it.id == id }) {
-                    val newApp = OsApp(id, selected, "Instalado via Loja", "📦", false, true)
-                    AppState.apps.add(newApp)
-                    AppState.notifications.add(0, NotificationItem("Loja", "$selected instalado com sucesso!"))
-                } else {
-                    AppState.notifications.add(0, NotificationItem("Loja", "$selected já está instalado."))
-                }
-            }
-        }
-        children.addAll(storeList, btnInstall)
     }
 }
 
-// ======= APLICAÇÃO PRINCIPAL =======
 class VentureOSApp : Application() {
-
     override fun start(primaryStage: Stage) {
         seedInitialData()
 
-        primaryStage.title = "VentureOS - Demo"
-        
-        // O StackPane é a base para sobrepor camadas (home, apps, painel de notificação)
+        primaryStage.title = "VentureOS"
         val mainStack = StackPane()
-        
-        val appUIManager = AppUIManager(mainStack)
+        val appManager = AppUIManager(mainStack)
 
-        // 1. Tela Inicial (Launcher)
         val homeScreen = BorderPane().apply {
-            style = "-fx-background-color: #${Theme.BACKGROUND.toString().substring(2)};"
-            
-            // Barra de status no topo
-            top = TopStatusBar().apply {
-                // Clicar na barra de status abre/fecha o painel de notificações
-                setOnMouseClicked {
-                    (mainStack.children.last() as? NotificationShade)?.toggle()
-                }
+            style = "-fx-background-color: ${Theme.BACKGROUND};"
+
+            top = VBox(10.0).apply {
+                children.addAll(
+                    TopStatusBar(),
+                    createSearchBar(appManager)
+                )
             }
 
-            // Grade de apps no centro
-            center = createLauncherPane(appUIManager)
-            
-            // Barra de navegação na base
-            bottom = NavigationBar(appUIManager)
+            center = createLauncherPane(appManager)
+            bottom = NotificationBar(appManager)
         }
 
-        // 2. Painel de Notificações (fica sobre tudo)
-        val notificationShade = NotificationShade()
-
-        mainStack.children.addAll(homeScreen, notificationShade)
-        StackPane.setAlignment(notificationShade, Pos.TOP_CENTER)
-
-        // Configuração da cena e do palco
+        mainStack.children.add(homeScreen)
         val scene = Scene(mainStack, 1024.0, 768.0)
         primaryStage.scene = scene
         primaryStage.show()
-
-        // Executa tarefas de primeiro boot
-        Platform.runLater {
-            if (AppState.isFirstBoot()) {
-                AutoInstaller.runFirstBootInstall()
-                AppState.markFirstBootDone()
-            }
-        }
-    }
-
-    override fun stop() {
-        AppState.scheduler.shutdownNow()
     }
 
     private fun seedInitialData() {
         if (AppState.apps.isEmpty()) {
             AppState.apps.addAll(
-                OsApp(id = "settings-app", name = "Configurações", description = "Ajustes do sistema", iconUnicode = "⚙️", installed = true),
-                OsApp(id = "store-app", name = "Loja", description = "Loja de aplicativos", iconUnicode = "🏬", installed = true),
-                OsApp(id = "files-app", name = "Arquivos", description = "Gerenciador de arquivos", iconUnicode = "📁", installed = true)
+                OsApp("browser", "Firefox", "Navegador web", "🌐", true),
+                OsApp("calc", "Calculadora", "Calculadora do sistema", "🧮", true),
+                OsApp("music", "Music", "Player de músicas", "🎵", true)
             )
         }
-        if (AppState.updates.isEmpty()) AppState.updates.addAll(generateDefaultUpdates())
-        if (AppState.notifications.isEmpty()) AppState.notifications.add(NotificationItem("Bem-vindo", "Bem-vindo ao VentureOS!"))
     }
 
-    private fun createLauncherPane(appManager: AppUIManager): VBox {
-        // Widget de Pesquisa
-        val searchBar = TextField().apply {
-            promptText = "Pesquisar apps, configurações..."
-            style = "-fx-background-radius: 20; -fx-background-color: #${Theme.SURFACE.toString().substring(2)}; -fx-text-fill: white;"
-        }
-
-        // Grade de apps
-        val appGrid = FlowPane().apply {
-            padding = Insets(20.0)
-            hgap = 16.0
-            vgap = 16.0
-            alignment = Pos.TOP_CENTER
-            AppState.apps.forEach { children.add(AppTile(it, appManager)) }
-            // Atualiza a grade quando um novo app é instalado
-            AppState.apps.addListener { _ ->
-                children.clear()
-                AppState.apps.forEach { children.add(AppTile(it, appManager)) }
-            }
-        }
-        
-        return VBox(20.0, searchBar, ScrollPane(appGrid).apply {
-            isFitToWidth = true
-            style = "-fx-background-color: transparent; -fx-background: transparent;"
-        }).apply {
-            padding = Insets(20.0)
-            alignment = Pos.TOP_CENTER
-        }
-    }
-}
-
-// ======= INSTALADOR AUTOMÁTICO (Sem alterações) =======
-object AutoInstaller {
-    fun runFirstBootInstall() {
-        Thread {
-            Thread.sleep(1500)
-            Platform.runLater {
-                if (!AppState.coppaMode.get()) {
-                    val recommended = listOf("Firefox", "WeatherPro")
-                    recommended.forEach { appName ->
-                        val id = appName.lowercase().replace(" ", "-")
-                        if (AppState.apps.none { it.id == id }) {
-                            AppState.apps.add(OsApp(id, appName, "Instalado automaticamente", "📦", false, true))
-                        }
+    private fun createSearchBar(appManager: AppUIManager): HBox {
+        val searchField = TextField().apply {
+            promptText = "Pesquisar por aplicativos para baixar"
+            style = "-fx-background-radius: 20; -fx-background-color: ${Theme.SURFACE}; -fx-text-fill: ${Theme.ON_SURFACE};"
+            setOnKeyPressed { event ->
+                if (event.code == KeyCode.ENTER) {
+                    val query = text.trim()
+                    if (query.isNotEmpty()) {
+                        installApp(query)
+                        text = ""
                     }
-                    AppState.notifications.add(0, NotificationItem("Sistema", "Apps recomendados foram instalados."))
                 }
             }
-        }.start()
+        }
+        return HBox(searchField).apply { padding = Insets(10.0); alignment = Pos.CENTER; }
+    }
+
+    private fun installApp(name: String) {
+        if (AppState.apps.none { it.name.equals(name, true) }) {
+            val newApp = OsApp(UUID.randomUUID().toString(), name, "App instalado via pesquisa", "📦", true)
+            AppState.apps.add(newApp)
+            AppState.notifications.add(NotificationItem("Sistema", "App \"$name\" instalado!"))
+        } else {
+            AppState.notifications.add(NotificationItem("Sistema", "App \"$name\" já está instalado!"))
+        }
+    }
+
+    private fun createLauncherPane(appManager: AppUIManager): FlowPane {
+        val launcher = FlowPane().apply {
+            hgap = 20.0
+            vgap = 20.0
+            padding = Insets(16.0)
+        }
+        AppState.apps.addListener { _ ->
+            launcher.children.clear()
+            launcher.children.addAll(AppState.apps.map { AppTile(it, appManager) })
+        }
+        launcher.children.addAll(AppState.apps.map { AppTile(it, appManager) })
+        return launcher
     }
 }
 
-// ======= PONTO DE ENTRADA =======
-fun main(args: Array<String>) {
-    Application.launch(VentureOSApp::class.java, *args)
+fun main() {
+    Application.launch(VentureOSApp::class.java)
 }
 
             
