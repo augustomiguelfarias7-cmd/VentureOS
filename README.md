@@ -10,7 +10,7 @@ VentureOS → Contém todo o código-fonte completo do sistema operacional, incl
 
 InterfaceVentureOS → Responsável por todo o código da interface gráfica do sistema, incluindo design visual, janelas, ícones e interação do usuário.
 
-Licença → Arquivo contendo a licença Apache 2.0, que permite uso comercial, modificação, distribuição e estudo do código.
+Licençe → Arquivo contendo a licença Apache 2.0, que permite uso comercial, modificação, distribuição e estudo do código.
 
 README → Documento de descrição do projeto, apresentando informações sobre o funcionamento do sistema e detalhes de desenvolvimento.
 
